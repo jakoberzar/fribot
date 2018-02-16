@@ -27,7 +27,7 @@ client.on("ready", () => {
     console.log(`Bot has started, with ${client.users.size} users, in ${client.channels.size} channels of ${client.guilds.size} guilds.`);
     // Example of changing the bot's playing game to something useful. `client.user` is what the
     // docs refer to as the "ClientUser".
-    client.user.setActivity(`2nd semester`);
+    client.user.setActivity(`2nd semester | $ help`);
 
     friGuild = client.guilds.find('id', friGuildId);
 });
@@ -35,13 +35,11 @@ client.on("ready", () => {
 client.on("guildCreate", guild => {
     // This event triggers when the bot joins a guild.
     console.log(`New guild joined: ${guild.name} (id: ${guild.id}). This guild has ${guild.memberCount} members!`);
-    client.user.setActivity(`on ${client.guilds.size} servers`);
 });
 
 client.on("guildDelete", guild => {
     // this event triggers when the bot is removed from a guild.
     console.log(`I have been removed from: ${guild.name} (id: ${guild.id})`);
-    client.user.setActivity(`on ${client.guilds.size} servers`);
 });
 
 
@@ -56,22 +54,40 @@ client.on("message", async message => {
     // which is set in the configuration file.
     if (message.channel.type === 'dm' && waitingForReply[message.author.id]) {
         const task = waitingForReply[message.author.id];
-        if (message.content.toLowerCase() === 'y' || message.content.toLowerCase() === 'yes') {
+        const input = message.content.toLowerCase();
+        if (input === 'y' || input === 'yes') {
             if (task.action === 'join') {
                 joinTask(task);
             } else {
-                unjoinTask(task);
+                leaveTask(task);
             }
+            delete waitingForReply[message.author.id];
+        } else if (input === 'n' || input === 'no') {
+            sendDirectMessage(message.author, 'Action aborted.');
+            delete waitingForReply[message.author.id];
+        } else if (input === '[y/n]') {
+            sendDirectMessage(message.author, 'Now now, aren\'t you funny!\n');
+        } else {
+            sendDirectMessage(message.author, `I don't understand that. Please reply with [y/n].`)
         }
-        delete waitingForReply[message.author.id];
+        return;
     }
-    if (message.content.indexOf(config.prefix) !== 0) return;
+
+    let messageContent = message.content;
+
+    if (message.channel.type !== 'dm' && message.content.indexOf(config.prefix) !== 0) {
+        return;
+    }
+
+    if (message.content.indexOf(config.prefix) === 0) {
+        messageContent = message.content.slice(config.prefix.length);
+    }
 
     // Here we separate our "command" name, and our "arguments" for the command.
     // e.g. if we have the message "+say Is this the real life?" , we'll get the following:
     // command = say
     // args = ["Is", "this", "the", "real", "life?"]
-    const args = message.content.slice(config.prefix.length).trim().split(/ +/g);
+    const args = messageContent.trim().split(/ +/g);
     const command = args.shift().toLowerCase();
 
     // Let's go with a few common example commands! Feel free to delete or change those.
@@ -166,7 +182,7 @@ client.on("message", async message => {
      */
     const modules = getModulesSorted(modulesData);
 
-    if (command === "join" || command === "unjoin") {
+    if (command === "join" || command === "leave") {
         const member = friGuild.members.get(message.author.id);
 
         let reply = '';
@@ -185,16 +201,25 @@ client.on("message", async message => {
             // Get only the roles that user can apply to
             let appliedRoles = _.intersection(argsLower, _.union(subjectRoles, otherRoles));
 
-            if (command === 'unjoin') {
-                // Offer to unjoin only roles that the user already has
-                const userRoles = member.roles.map(role => role.name);
+            const userRoles = member.roles
+                .map(role => role.name)
+                .filter(role => {
+                    return role !== '@everyone'
+                });
+
+
+            if (command === 'join') {
+                // Offer to only join roles that the does not already have
+                appliedRoles = _.difference(appliedRoles, userRoles);
+            } else if (command === 'leave') {
+                // Offer to only leave roles that the user already has
                 appliedRoles = _.intersection(appliedRoles, userRoles);
             }
 
             if (appliedRoles.length === 0) {
                 // User didn't specify any viable roles <.<
                 reply = 'You did not specify any viable roles! Try using the `$ roles-info` command!\n'
-                    + 'Your current roles are: ' + member.roles.map(role => role.name).join(', '); + '\n';
+                    + 'Your current roles are: ' + userRoles.join(', '); + '\n';
             } else {
                 // User specified enough roles, now get nicer info on them
                 const [ appliedSubjects, appliedOthers ] = _.partition(appliedRoles, role => {
@@ -214,7 +239,7 @@ client.on("message", async message => {
                         return `- **${other.acronym}** - ${other.name} - ${other.description}`
                     }).join('\n');
 
-                reply = 'Do you want to ' + command + ':\n\n'
+                reply = 'Do you want to ' + command + ' all of the following roles:\n\n'
                     + appliedSubjectsInfo + '\n'
                     + appliedOthersInfo + '\n\n'
                     + 'Reply with [y/n].';
@@ -228,6 +253,25 @@ client.on("message", async message => {
                     'timestamp': message.createdTimestamp
                 }
             }
+        }
+
+        sendDirectMessage(message.author, reply);
+        deleteMessageTextChannel(message);
+    }
+
+    if (command === 'my-roles') {
+        const member = friGuild.members.get(message.author.id);
+        const userRoles = member.roles
+            .map(role => role.name)
+            .filter(role => {
+                return role !== '@everyone'
+            });
+
+        let reply = '';
+        if (userRoles.length > 0) {
+            reply = 'Your current roles are: ' + userRoles.join(', '); + '\n';
+        } else {
+            reply = 'You currently do not have any special roles.\n';
         }
 
         sendDirectMessage(message.author, reply);
@@ -280,22 +324,32 @@ function getHelp(section) {
     let message = `Here's help for you:`;
     let commandHelp = [
         {
+            command: 'help',
+            description: 'Displays this help.',
+            example: 'help',
+        },
+        {
             command: 'join <role1> <role2> ...',
             description: 'Join the specified roles. To get more information on the roles you can join, use the command '
                 + '`$ roles-info`',
             example: 'join oim pui bmo zzrs oo',
         },
         {
+            command: 'leave <role1> <role2> ...',
+            description: 'Leave the specified roles. To get more information on the roles you can leave, use the command '
+                + '`$ roles-info`',
+            example: 'leave oim pui bmo zzrs oo',
+        },
+        {
+            command: 'my-roles',
+            description: 'Tells you about the roles you currently have.',
+            example: 'my-roles'
+        },
+        {
             command: 'roles-info',
             description: 'Tells you about the roles you can choose between.',
             example: 'roles-info'
         },
-        {
-            command: 'unjoin <role1> <role2> ...',
-            description: 'Unjoin the specified roles. To get more information on the roles you can unjoin, use the command '
-                + '`$ roles-info`',
-            example: 'unjoin oim pui bmo zzrs oo',
-        }
     ]
 
     if (section === "join") {
@@ -310,14 +364,14 @@ function getHelp(section) {
         ]
     }
 
-    if (section === "unjoin") {
-        message = `Here's help for you on the join command:`;
+    if (section === "leave") {
+        message = `Here's help for you on the leave command:`;
         commandHelp = [
             {
-                command: 'unjoin <role1> <role2> ...',
-                description: 'Unjoin the specified roles. To get more information on the roles you can unjoin, use the command '
+                command: 'leave <role1> <role2> ...',
+                description: 'Leave the specified roles. To get more information on the roles you can leave, use the command '
                     + '`$ roles-info`',
-                example: 'unjoin oim pui bmo zzrs oo',
+                example: 'leave oim pui bmo zzrs oo',
             }
         ]
     }
@@ -326,7 +380,7 @@ function getHelp(section) {
         + commandHelp.map(command => {
             return '- `$ ' + command.command + '` - '
                 + command.description
-                + '\n\t\tExample: _$ ' + command.example + '_\n';
+                + '\n\t\tExample: _$ ' + command.example + '_\n\n';
         }).join('');
 }
 
@@ -353,7 +407,7 @@ function joinTask({ message, data }) {
     })
 }
 
-function unjoinTask({ message, data }) {
+function leaveTask({ message, data }) {
     const guildMember = friGuild.members.get(message.author.id);
     const roles = friGuild.roles
         .filter(role => data.roles.some(r => r === role.name))
