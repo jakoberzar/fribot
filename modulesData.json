@@ -1,0 +1,85 @@
+{
+    "modules": [
+        {
+            "id": 0,
+            "name": "Informacijski sistemi"
+        }, {
+            "id": 1,
+            "name": "Obvladovanje informatike"
+        }, {
+            "id": 2,
+            "name": "Razvoj programske opreme"
+        }, {
+            "id": 3,
+            "name": "Računalniška omrežja"
+        }, {
+            "id": 4,
+            "name": "Računalniški sistemi"
+        }, {
+            "id": 5,
+            "name": "Algoritmi in sistemski programi"
+        }, {
+            "id": 6,
+            "name": "Umetna inteligenca"
+        }, {
+            "id": 7,
+            "name": "Medijske tehnologije"
+        }
+    ],
+    "subjects": [
+        {
+            "id": 0,
+            "moduleId": 0,
+            "acronym": "OiM",
+            "name": "Organizacija in managment"
+        },
+        {
+            "id": 1,
+            "moduleId": 1,
+            "acronym": "PUI",
+            "name": "Planiranje in upravljanje informatike"
+        },
+        {
+            "id": 2,
+            "moduleId": 2,
+            "acronym": "TPO",
+            "name": "Tehnologija programske opreme"
+        },
+        {
+            "id": 3,
+            "moduleId": 3,
+            "acronym": "BMO",
+            "name": "Brezžična in mobilna omrežja"
+        },
+        {
+            "id": 4,
+            "moduleId": 4,
+            "acronym": "ZZRS",
+            "name": "Zanesljivost in zmogljivost računalniških sistemov"
+        },
+        {
+            "id": 5,
+            "moduleId": 5,
+            "acronym": "P",
+            "name": "Prevajalniki"
+        },
+        {
+            "id": 6,
+            "moduleId": 6,
+            "acronym": "RIS",
+            "name": "Razvoj inteligentnih sistemov"
+        },
+        {
+            "id": 7,
+            "moduleId": 7,
+            "acronym": "OO",
+            "name": "Osnove oblikovanja"
+        }
+    ],
+    "otherRoles": [
+        {
+            "acronym": "weeb",
+            "name": "Weeb Paradise"
+        }
+    ]
+}

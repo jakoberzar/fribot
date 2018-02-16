@@ -1,0 +1,14 @@
+{
+  "name": "fribot",
+  "version": "0.1.0",
+  "description": "Free Discord bot for FRI students",
+  "main": "bot.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Jakob Erzar <jakob.erzar@gmail.com>",
+  "license": "GPL-3.0",
+  "dependencies": {
+    "discord.js": "^11.3.0"
+  }
+}

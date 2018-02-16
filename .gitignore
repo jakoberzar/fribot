@@ -1,0 +1,5 @@
+config.json
+node_modules
+
+# cause it's crap in older node versions
+package-lock.json

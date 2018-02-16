@@ -1,0 +1,2 @@
+- You'll need to get a token from Discord for a bot and put it in `config.json.example` to run it on your own.
+- Also, rename `config.json.example` to `config.json`
