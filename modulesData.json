@@ -78,8 +78,9 @@
     ],
     "otherRoles": [
         {
-            "acronym": "weeb",
-            "name": "Weeb Paradise"
+            "acronym": "weebs",
+            "name": "Weeb Paradise",
+            "description": "A channel for anime related discussion"
         }
     ]
 }

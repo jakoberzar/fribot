@@ -1,4 +1,5 @@
 {
     "token": "<insert token here>",
     "prefix": "$"
+    "guildId": "<insert your guild id here>"
 }

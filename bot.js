@@ -1,6 +1,8 @@
 // Load up the discord.js library
 const Discord = require("discord.js");
 
+const _ = require("lodash");
+
 // This is your client. Some people call it `bot`, some people call it `self`,
 // some might call it `cootchie`. Either way, when you see `client.something`, or `bot.something`,
 // this is what we're refering to. Your client.
@@ -8,24 +10,32 @@ const client = new Discord.Client();
 
 // Here we load the config.json file that contains our token and our prefix values.
 const config = require("./config.json");
-const modules = require("./modulesData.json");
 // config.token contains the bot's token
 // config.prefix contains the message prefix.
+
+// Load FRI info
+const modulesData = require("./modulesData.json");
+
+const waitingForReply = {};
+
+const friGuildId = config.guildId;
+
+let friGuild = undefined;
 
 client.on("ready", () => {
     // This event will run if the bot starts, and logs in, successfully.
     console.log(`Bot has started, with ${client.users.size} users, in ${client.channels.size} channels of ${client.guilds.size} guilds.`);
     // Example of changing the bot's playing game to something useful. `client.user` is what the
     // docs refer to as the "ClientUser".
-    //   client.user.setActivity(`on ${client.guilds.size} servers`);
-    client.user.setActivity(`your mom`);
+    client.user.setActivity(`2nd semester`);
+
+    friGuild = client.guilds.find('id', friGuildId);
 });
 
 client.on("guildCreate", guild => {
     // This event triggers when the bot joins a guild.
     console.log(`New guild joined: ${guild.name} (id: ${guild.id}). This guild has ${guild.memberCount} members!`);
-    //   client.user.setActivity(`on ${client.guilds.size} servers`);
-    client.user.setActivity(`your mom`);
+    client.user.setActivity(`on ${client.guilds.size} servers`);
 });
 
 client.on("guildDelete", guild => {
@@ -44,6 +54,17 @@ client.on("message", async message => {
 
     // Also good practice to ignore any message that does not start with our prefix,
     // which is set in the configuration file.
+    if (message.channel.type === 'dm' && waitingForReply[message.author.id]) {
+        const task = waitingForReply[message.author.id];
+        if (message.content.toLowerCase() === 'y' || message.content.toLowerCase() === 'yes') {
+            if (task.action === 'join') {
+                joinTask(task);
+            } else {
+                unjoinTask(task);
+            }
+        }
+        delete waitingForReply[message.author.id];
+    }
     if (message.content.indexOf(config.prefix) !== 0) return;
 
     // Here we separate our "command" name, and our "arguments" for the command.
@@ -121,6 +142,9 @@ client.on("message", async message => {
     }
 
     if (command === "purge") {
+        if (!message.member.roles.some(r => ["Administrator", "Moderator"].includes(r.name)))
+            return message.reply("Sorry, you don't have permissions to use this!");
+
         // This command removes all messages from all users in the channel, up to 100.
 
         // get the delete count, as an actual number.
@@ -131,27 +155,213 @@ client.on("message", async message => {
             return message.reply("Please provide a number between 2 and 100 for the number of messages to delete");
 
         // So we get our messages, and delete them. Simple enough, right?
-        const fetched = await message.channel.fetchMessages({ count: deleteCount });
+
+        const fetched = await message.channel.fetchMessages({ limit: deleteCount });
         message.channel.bulkDelete(fetched)
             .catch(error => message.reply(`Couldn't delete messages because of: ${error}`));
     }
 
-    if (command === "join") {
-        const user = message.member;
+    /**
+     * OUR ACTUAL USER COMMANDS
+     */
+    const modules = getModulesSorted(modulesData);
 
-        // Check if the roles are fine
-        const roles = ['Weeb Paradise', 'oim', 'pui', 'tpo', 'bmo', 'zzrs', 'p', 'ris', 'oo'];
-        const applied = args.filter(role => roles.some(r => r === role)); // todo - include lodash and intersect
+    if (command === "join" || command === "unjoin") {
+        const member = friGuild.members.get(message.author.id);
 
-        message.reply('You wanna join ' + applied.join(', ') + '?');
+        let reply = '';
 
+        if (args.length === 0) {
+            reply = 'You did not specify enough parameters for the ' + command + ' command!';
+        } else if (args[0] === 'help') {
+            reply = getHelp(command);
+        } else {
+            const subjects = applyModulesToSubjects(modulesData);
+            // Check if the roles are fine
+            const subjectRoles = subjects.map(subject => subject.acronym.toLowerCase());
+            const otherRoles = modulesData.otherRoles.map(role => role.acronym.toLowerCase());
+            const argsLower = args.map(arg => arg.toLowerCase());
+
+            // Get only the roles that user can apply to
+            let appliedRoles = _.intersection(argsLower, _.union(subjectRoles, otherRoles));
+
+            if (command === 'unjoin') {
+                // Offer to unjoin only roles that the user already has
+                const userRoles = member.roles.map(role => role.name);
+                appliedRoles = _.intersection(appliedRoles, userRoles);
+            }
+
+            if (appliedRoles.length === 0) {
+                // User didn't specify any viable roles <.<
+                reply = 'You did not specify any viable roles! Try using the `$ roles-info` command!\n'
+                    + 'Your current roles are: ' + member.roles.map(role => role.name).join(', '); + '\n';
+            } else {
+                // User specified enough roles, now get nicer info on them
+                const [ appliedSubjects, appliedOthers ] = _.partition(appliedRoles, role => {
+                    return subjectRoles.some(sub => sub == role)
+                });
+
+                const appliedSubjectsInfo = appliedSubjects
+                    .map(role => {
+                        const sub = subjects.find(s => s.acronym.toLowerCase() == role);
+                        return `- **${sub.acronym.toLowerCase()}** - ${sub.name} _(${sub.module.name})_`;
+                    })
+                    .join('\n');
+
+                const appliedOthersInfo = appliedOthers
+                    .map(role => {
+                        const other = modulesData.otherRoles.find(s => s.acronym.toLowerCase() == role);
+                        return `- **${other.acronym}** - ${other.name} - ${other.description}`
+                    }).join('\n');
+
+                reply = 'Do you want to ' + command + ':\n\n'
+                    + appliedSubjectsInfo + '\n'
+                    + appliedOthersInfo + '\n\n'
+                    + 'Reply with [y/n].';
+
+                waitingForReply[message.author.id] = {
+                    'action': command,
+                    'message': message,
+                    'data': {
+                        roles: appliedRoles
+                    },
+                    'timestamp': message.createdTimestamp
+                }
+            }
+        }
+
+        sendDirectMessage(message.author, reply);
+        deleteMessageTextChannel(message);
     }
 
-    if (command === "subject-info") {
-        const subjectInfo = modules.subjects.map(subject => subject.acronym + " - " + subject.name);
+    if (command === "roles-info") {
+        const subjects = applyModulesToSubjects(modulesData);
+        const subjectInfo = subjects.map(subject => {
+            return `- **${subject.acronym.toLowerCase()}** - ${subject.name} _(${subject.module.name})_`
+        }).join('\n');
 
-        message.channel.send(subjectInfo.join("\n"));
+        const otherRolesInfo = modulesData.otherRoles.map(role => {
+            return `- **${role.acronym}** - ${role.name} - ${role.description}`
+        }).join('\n');
+
+        const reply = 'Roles for optional subjects (2nd semester):\n\n'
+            + subjectInfo + '\n\n'
+            + 'Other possible roles:\n\n'
+            + otherRolesInfo + '\n';
+
+        sendDirectMessage(message.author, reply);
+        deleteMessageTextChannel(message);
+    }
+
+    if (command === "help") {
+        const reply = getHelp();
+        sendDirectMessage(message.author, reply);
+        deleteMessageTextChannel(message);
     }
 });
+
+function sendDirectMessage(user, message) {
+    user.createDM().then(channel => {
+        channel.send(message);
+    }).catch(reason => {
+        console.log(`Could not create a DM channel with ${user.username}:\n${reason}\nMessage:\n${message}\n`);
+    });
+}
+
+function deleteMessageTextChannel(message) {
+    if (message.channel.type === "text") {
+        message.delete().catch(reason => {
+            console.log('Could not delete a message:\n' + reason);
+        });
+    }
+}
+
+function getHelp(section) {
+    let message = `Here's help for you:`;
+    let commandHelp = [
+        {
+            command: 'join <role1> <role2> ...',
+            description: 'Join the specified roles. To get more information on the roles you can join, use the command '
+                + '`$ roles-info`',
+            example: 'join oim pui bmo zzrs oo',
+        },
+        {
+            command: 'roles-info',
+            description: 'Tells you about the roles you can choose between.',
+            example: 'roles-info'
+        },
+        {
+            command: 'unjoin <role1> <role2> ...',
+            description: 'Unjoin the specified roles. To get more information on the roles you can unjoin, use the command '
+                + '`$ roles-info`',
+            example: 'unjoin oim pui bmo zzrs oo',
+        }
+    ]
+
+    if (section === "join") {
+        message = `Here's help for you on the join command:`;
+        commandHelp = [
+            {
+                command: 'join <role1> <role2> ...',
+                description: 'Join the specified roles. To get more information on the roles you can join, use the command '
+                    + '`$ roles-info`',
+                example: 'join oim pui bmo zzrs oo',
+            }
+        ]
+    }
+
+    if (section === "unjoin") {
+        message = `Here's help for you on the join command:`;
+        commandHelp = [
+            {
+                command: 'unjoin <role1> <role2> ...',
+                description: 'Unjoin the specified roles. To get more information on the roles you can unjoin, use the command '
+                    + '`$ roles-info`',
+                example: 'unjoin oim pui bmo zzrs oo',
+            }
+        ]
+    }
+
+    return message + '\n\n'
+        + commandHelp.map(command => {
+            return '- `$ ' + command.command + '` - '
+                + command.description
+                + '\n\t\tExample: _$ ' + command.example + '_\n';
+        }).join('');
+}
+
+function getModulesSorted(moduleData) {
+    return moduleData.modules.sort((a, b) => a.id - b.id);
+}
+
+function applyModulesToSubjects(modulesData) {
+    const modules = getModulesSorted(modulesData);
+    return modulesData.subjects.map(subject => {
+        let newSubject = subject;
+        newSubject['module'] = modules[subject.moduleId];
+        return newSubject;
+    });
+}
+
+function joinTask({ message, data }) {
+    const guildMember = friGuild.members.get(message.author.id);
+    const roles = friGuild.roles
+        .filter(role => data.roles.some(r => r === role.name))
+    guildMember.addRoles(roles).then(msg => {
+        console.log('Added roles to user ' + message.author.username + ' - roles: ' + data.roles.join(', '));
+        sendDirectMessage(message.author, 'Roles added!');
+    })
+}
+
+function unjoinTask({ message, data }) {
+    const guildMember = friGuild.members.get(message.author.id);
+    const roles = friGuild.roles
+        .filter(role => data.roles.some(r => r === role.name))
+    guildMember.removeRoles(roles).then(msg => {
+        console.log('Removed roles from user ' + message.author.username + ' - roles: ' + data.roles.join(', '));
+        sendDirectMessage(message.author, 'Roles removed!');
+    })
+}
+
 
 client.login(config.token);
